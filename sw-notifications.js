@@ -1,10 +1,14 @@
 // Importado pelo Service Worker gerado pelo vite-plugin-pwa (workbox.importScripts).
-// Trata o clique nas notificações de ensaio, abrindo o app na localidade correspondente.
+// Trata o clique nas notificações de ensaio e reuniões, abrindo o app na aba correspondente.
 
 // Monta a URL relativa ao escopo do app (funciona em subpastas do GitHub Pages)
-const buildAppUrl = (locationId) => {
+const buildAppUrl = (data) => {
   const url = new URL('./', self.registration.scope);
-  if (locationId) url.searchParams.set('locationId', locationId);
+  if (data && data.locationId) {
+    url.searchParams.set('locationId', data.locationId);
+  } else if (data && data.section) {
+    url.searchParams.set('section', data.section);
+  }
   return url.href;
 };
 
@@ -15,7 +19,7 @@ self.addEventListener('push', (event) => {
   // 🔔 Lembrete de Ensaio
   // (Amanhã ou hoje)
   // ADM, Localidade, horário
-  const title = '🔔 Lembrete de Ensaio';
+  const title = data.title || '🔔 Lembrete de Ensaio';
   const when = data.when ? `(${data.when})` : '';
   const admin = data.adminName || '';
   const location = data.locationName || '';
@@ -24,18 +28,20 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(title, {
-      body: `${when}\n${admin}, ${location}, ${time}`,
+      body: data.body || `${when}\n${admin}, ${location}, ${time}`,
       icon,
       badge: icon,
-      data: { locationId: data.locationId || null },
+      data: {
+        locationId: data.locationId || null,
+        section: data.section || null,
+      },
     })
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const locationId = event.notification.data && event.notification.data.locationId;
-  const urlToOpen = buildAppUrl(locationId);
+  const urlToOpen = buildAppUrl(event.notification.data);
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
