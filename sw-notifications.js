@@ -1,5 +1,5 @@
 // Importado pelo Service Worker gerado pelo vite-plugin-pwa (workbox.importScripts).
-// Trata o clique nas notificações de ensaio e reuniões, abrindo o app na aba correspondente.
+// Trata o recebimento de Web Push (app fechado) e o clique nas notificações de ensaio e reuniões.
 
 // Monta a URL relativa ao escopo do app (funciona em subpastas do GitHub Pages)
 const buildAppUrl = (data) => {
@@ -12,31 +12,45 @@ const buildAppUrl = (data) => {
   return url.href;
 };
 
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
+const parsePushPayload = (event) => {
+  if (!event.data) return {};
+  try {
+    return event.data.json();
+  } catch {
+    return { body: event.data.text() };
+  }
+};
 
-  // Formato:
-  // 🔔 Lembrete de Ensaio
-  // (Amanhã ou hoje)
-  // ADM, Localidade, horário
-  const title = data.title || '🔔 Lembrete de Ensaio';
-  const when = data.when ? `(${data.when})` : '';
-  const admin = data.adminName || '';
-  const location = data.locationName || '';
-  const time = data.time || '';
+self.addEventListener('push', (event) => {
+  const payload = parsePushPayload(event);
   const icon = new URL('./icons/icon-192.png', self.registration.scope).href;
 
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || `${when}\n${admin}, ${location}, ${time}`,
+  // Aceita tanto um lote ({ notifications: [...] }) quanto uma única notificação
+  const items = Array.isArray(payload.notifications) ? payload.notifications : [payload];
+
+  const promises = items.map((item) => {
+    const title = item.title || 'Lembrete de Ensaio';
+    const when = item.when ? `(${item.when})` : '';
+    const fallbackParts = [item.adminName, item.locationName, item.time].filter(Boolean).join(', ');
+    const body = item.body || [when, fallbackParts].filter(Boolean).join('\n');
+
+    const options = {
+      body,
       icon,
       badge: icon,
       data: {
-        locationId: data.locationId || null,
-        section: data.section || null,
+        locationId: item.locationId || null,
+        section: item.section || null,
       },
-    })
-  );
+    };
+    if (item.tag) {
+      options.tag = item.tag;
+    }
+
+    return self.registration.showNotification(title, options);
+  });
+
+  event.waitUntil(Promise.all(promises));
 });
 
 self.addEventListener('notificationclick', (event) => {
